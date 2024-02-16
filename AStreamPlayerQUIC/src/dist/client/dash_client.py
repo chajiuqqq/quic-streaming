@@ -265,9 +265,9 @@ def start_playback_smart(dp_object, domain, playback_type=None, download=False, 
         # Getting the URL list for each bitrate
         dp_object.video[bitrate] = read_mpd.get_url_list(dp_object.video[bitrate], video_segment_duration,
                                                          dp_object.playback_duration, bitrate)
-        if "$Bandwidth$" in dp_object.video[bitrate].initialization:
+        if "$RepresentationID$" in dp_object.video[bitrate].initialization:
             dp_object.video[bitrate].initialization = dp_object.video[bitrate].initialization.replace(
-                "$Bandwidth$", str(bitrate))
+                "$RepresentationID$", dp_object.video[bitrate].id)
         media_urls = [dp_object.video[bitrate].initialization] + dp_object.video[bitrate].url_list
         for segment_count, segment_url in enumerate(media_urls, dp_object.video[bitrate].start):
             # segment_duration = dp_object.video[bitrate].segment_duration
