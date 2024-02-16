@@ -1,0 +1,4 @@
+psutil
+oauthlib
+twisted
+cherrypy
