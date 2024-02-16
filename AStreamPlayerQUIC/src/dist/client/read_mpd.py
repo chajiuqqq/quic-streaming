@@ -72,6 +72,7 @@ class MediaObject(object):
         self.initialization = None
         self.base_url = None
         self.url_list = list()
+        self.id = None
 
 
 class DashPlayback:
@@ -96,13 +97,11 @@ def get_url_list(media, segment_duration,  playback_duration, bitrate):
     segment_count = media.start
     # Get the Base URL string
     base_url = media.base_url
-    if "$Bandwidth$" in base_url:
-        base_url = base_url.replace("$Bandwidth$", str(bitrate))
-    if "$Number" in base_url:
-        base_url = base_url.split('$')
-        base_url[1] = base_url[1].replace('$', '')
-        base_url[1] = base_url[1].replace('Number', '')
-        base_url = ''.join(base_url)
+    id = media.id
+    if "$RepresentationID$" in base_url:
+        base_url = base_url.replace("$RepresentationID$", id)
+    if "$Number$" in base_url:
+        base_url = base_url.replace("$Number$", "%d")
     while True:
         media.url_list.append(base_url % segment_count)
         segment_count += 1
@@ -133,6 +132,7 @@ def read_mpd(mpd_file, dashplayback):
     for adaptation_set in child_period:
         if 'mimeType' in adaptation_set.attrib:
             media_found = False
+            media_object = None
             if 'audio' in adaptation_set.attrib['mimeType']:
                 media_object = dashplayback.audio
                 media_found = False
@@ -144,28 +144,27 @@ def read_mpd(mpd_file, dashplayback):
             if media_found:
                 config_dash.LOG.info("Retrieving Media")
                 config_dash.JSON_HANDLE["video_metadata"]['available_bitrates'] = list()
-                for representation in adaptation_set:
-                    bandwidth = int(representation.attrib['bandwidth'])
-                    config_dash.JSON_HANDLE["video_metadata"]['available_bitrates'].append(bandwidth)
-                    media_object[bandwidth] = MediaObject()
-                    media_object[bandwidth].segment_sizes = []
-                    for segment_info in representation:
-                        if "SegmentTemplate" in get_tag_name(segment_info.tag):
-                            media_object[bandwidth].base_url = segment_info.attrib['media']
-                            media_object[bandwidth].start = int(segment_info.attrib['startNumber'])
-                            media_object[bandwidth].timescale = float(segment_info.attrib['timescale'])
-                            media_object[bandwidth].initialization = segment_info.attrib['initialization']
+                segment_template_info = dict()
+                for child in adaptation_set:
+                    if "SegmentTemplate" in get_tag_name(child.tag):
+                        segment_template = child
+                        segment_template_info["base_url"] = segment_template.attrib['media']
+                        segment_template_info["start"] = int(segment_template.attrib['startNumber'])
+                        segment_template_info["timescale"] = float(segment_template.attrib['timescale'])
+                        segment_template_info["initialization"] = segment_template.attrib['initialization']
                         if 'video' in adaptation_set.attrib['mimeType']:
-                            if "SegmentSize" in get_tag_name(segment_info.tag):
-                                try:
-                                    segment_size = float(segment_info.attrib['size']) * float(
-                                        SIZE_DICT[segment_info.attrib['scale']])
-                                except KeyError, e:
-                                    config_dash.LOG.error("Error in reading Segment sizes :{}".format(e))
-                                    continue
-                                media_object[bandwidth].segment_sizes.append(segment_size)
-                            elif "SegmentTemplate" in get_tag_name(segment_info.tag):
-                                video_segment_duration = (float(segment_info.attrib['duration'])/float(
-                                    segment_info.attrib['timescale']))
-                                config_dash.LOG.debug("Segment Playback Duration = {}".format(video_segment_duration))
+                            video_segment_duration = (float(segment_template.attrib['duration']) / float(
+                                segment_template.attrib['timescale']))
+                            config_dash.LOG.debug("Segment Playback Duration = {}".format(video_segment_duration))
+                    if "Representation" in get_tag_name(child.tag):
+                        representation = child
+                        bandwidth = int(representation.attrib['bandwidth'])
+                        config_dash.JSON_HANDLE["video_metadata"]['available_bitrates'].append(bandwidth)
+                        media_object[bandwidth] = MediaObject()
+                        media_object[bandwidth].segment_sizes = []
+                        media_object[bandwidth].id = representation.attrib['id']
+                        media_object[bandwidth].base_url = segment_template_info['base_url']
+                        media_object[bandwidth].start = segment_template_info['start']
+                        media_object[bandwidth].timescale = segment_template_info['timescale']
+                        media_object[bandwidth].initialization = segment_template_info['initialization']
     return dashplayback, int(video_segment_duration)
